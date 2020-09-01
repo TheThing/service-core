@@ -1,0 +1,1 @@
+node service\uninstall.mjs

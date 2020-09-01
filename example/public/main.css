@@ -1,0 +1,129 @@
+html {
+  box-sizing: border-box;
+  font-size: 16px;
+  height: 100%;
+}
+
+*, *:before, *:after {
+  box-sizing: inherit;
+}
+
+body, h1, h2, h3, h4, h5, h6, p {
+  margin: 0;
+  padding: 0;
+  font-weight: normal;
+}
+
+body {
+  background: #3d3d3d;
+  color: #f1f1f1;
+  display: flex;
+  font-size: 16px;
+  min-height: 100vh;
+  flex-direction: column;
+  font-family: Helvetica, sans-serif, Arial;
+}
+
+a, a:visited {
+  color: #eee;
+  text-decoration: underline;
+}
+
+#header {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  background: #292929;
+  align-items: center;
+}
+
+#header a {
+  width: 150px;
+  text-align: center;
+  padding: 1rem;
+}
+
+#header .seperator {
+  border-right: 1px solid #999;
+  height: 1rem;
+}
+
+/* Container */
+.container {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  flex-grow: 2;
+}
+
+.disconnected {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  font-size: 1em;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-grow: 2;
+  width: 100%;
+}
+
+main h1 {
+  text-align: center;
+  font-size: 1.6rem;
+  line-height: 3.6rem;
+}
+
+form.login {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+}
+
+
+/***************** Log ********************/
+#logger {
+  margin: 0 2rem;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #999;
+  padding: 0.5rem;
+  overflow-y: scroll;
+  height: calc(100vh - 160px);
+  background: #0c0c0c;
+}
+
+#logger div {
+  color: #ccc;
+  margin-left: 1rem;
+  text-indent: -1rem;
+  line-height: 1.4rem;
+  margin-bottom: 0.1rem;
+}
+
+#logger span.white { color: rgb(242,242,242); }
+#logger span.yellow { color: rgb(193,156,0); }
+#logger span.cyan { color: rgb(58,150,221); }
+#logger span.magenta { color: rgb(136,23,152); }
+#logger span.red { color: rgb(197,15,31); }
+#logger span.green { color: rgb(19,161,14); }
+#logger span.inverse {
+  color: #0c0c0c;
+  background: white;
+  display: inline-block;
+}
+
+#logger .padder {
+  height: 0.5rem;
+  flex: 0 0 auto;
+}
