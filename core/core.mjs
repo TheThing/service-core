@@ -111,14 +111,53 @@ export default class Core extends EventEmitter{
     if (fs.existsSync(getPathFromRoot('./app/' + version.name))) {
       await runCommand('rmdir', ['/S', '/Q', `"${getPathFromRoot('./app/' + version.name)}"`])
     }
-    await fsp.mkdir(getPathFromRoot('./app/' + version.name))
+    try {
+      await fsp.mkdir(getPathFromRoot('./app/' + version.name))
+    } catch(err) {
+      if (err.code !== 'EEXIST') {
+        throw err
+      }
+    }
+    // await fsp.mkdir(getPathFromRoot('./app/' + version.name + '/node_modules'))
     this.logActive(name, active, `Downloading ${version.name} (${version.url}) to ${version.name + '/' + version.name + '.zip'}\n`)
     let filePath = getPathFromRoot('./app/' + version.name + '/' + version.name + '.zip')
     await request(version.url, filePath)
     this.logActive(name, active, `Downloading finished, starting extraction\n`)
-    await runCommand('"C:\\Program Files\\7-Zip\\7z.exe"', ['e', `"${filePath}"`], this.logActive.bind(this, name, active))
-    // await request(version)
-    // request(config[name + 'Repository'])
+    await runCommand(
+      '"C:\\Program Files\\7-Zip\\7z.exe"',
+      ['x', `"${filePath}"`],
+      getPathFromRoot('./app/' + version.name + '/'),
+      this.logActive.bind(this, name, active)
+    )
+
+    if (!fs.existsSync(getPathFromRoot('./app/' + version.name + '/index.mjs'))) {
+      this.logActive(name, active, `\nERROR: Missing index.mjs in the folder, exiting\n`)
+      throw new Error(`Missing index.mjs in ${getPathFromRoot('./app/' + version.name + '/index.mjs')}`)
+    }
+
+    this.logActive(name, active, `\nStarting npm install\n`)
+    
+    await runCommand(
+      'npm.cmd',
+      ['install', '--production', '--no-optional', '--no-package-lock', '--no-audit'],
+      getPathFromRoot('./app/' + version.name + '/'),
+      this.logActive.bind(this, name, active)
+    )
+
+    this.logActive(name, active, `\nInstalled:\n`)
+
+    await runCommand(
+      'npm.cmd',
+      ['list'],
+      getPathFromRoot('./app/' + version.name + '/'),
+      this.logActive.bind(this, name, active)
+    )
+    
+    await this._db.set(`core.${name}LatestInstalled`, version.name)
+                  .write()
+    this.emit('dbupdated', {})
+    
+    this.logActive(name, active, `\nSuccessfully installed ${version.name}\n`)
   }
   
   async startProgram(name) {

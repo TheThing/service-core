@@ -106,3 +106,6 @@ dist
 # Custom ignore
 db.json
 package-lock.json
+
+app/*
+manage/*
