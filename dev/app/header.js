@@ -15,19 +15,24 @@ const Header = {
     })
   },
   view: function() {
-    let path = m.route.get()
+    let path = m.route.get() || ''
 
     return [
       m('div.seperator'),
       m(m.route.Link, {
         href: '/',
-        class: path === '/' ? 'active' : '',
-      }, 'Frontpage'),
+        class: path === '/' || path === '' ? 'active' : '',
+      }, 'Status'),
       m('div.seperator'),
       m(m.route.Link, {
         href: '/log',
         class: path === '/log' ? 'active' : '',
       }, 'Log'),
+      m('div.seperator'),
+      m(m.route.Link, {
+        href: '/updater',
+        class: path.startsWith('/updater') ? 'active' : '',
+      }, 'Updater'),
       m('div.seperator'),
       !this.connected && m('div.disconnected', `
         Lost connection with server, Attempting to reconnect

@@ -17,12 +17,15 @@ require('./socket')
 const m = require('mithril')
 const Header = require('./header')
 
-const Frontpage = require('./frontpage/frontpage')
+const Status = require('./status/status')
 const Log = require('./log/log')
+const Updater = require('./updater/updater')
 
 m.mount(document.getElementById('header'), Header)
 
 m.route(document.getElementById('content'), '/', {
-    '/': Frontpage,
+    '/': Status,
     '/log': Log,
+    '/updater': Updater,
+    '/updater/:id': Updater,
 })

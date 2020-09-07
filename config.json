@@ -2,5 +2,10 @@
   "name": "service-core",
   "serviceName": "Service-Core Node",
   "description": "NodeJS Test Service",
-  "port": 4269
+  "port": 4270,
+  "managePort": 4269,
+  "hasManage": true,
+  "appRepository": "thething/sc-helloworld",
+  "manageRepository": null,
+  "useDev": true
 }

@@ -1,27 +1,27 @@
 const m = require('mithril')
 const socket = require('../socket')
+const Module = require('../module')
 
-const Log = {
-  oninit: function() {
+const Log = Module({
+  init: function() {
     this.connected = socket.connected
     this.loglines = []
     
-    socket.on('newlog', data => {
+    this.on('newlog', data => {
       this.loglines.push(this.formatLine(data))
       m.redraw()
     })
 
-    socket.on('connect', () => {
-      this.loglines = []
-      this.loadData()
-      socket.emit('core.listenlogs', {})
-      m.redraw()
-    })
+    this._socketOn(() => this.loadData())
+  },
 
-    this.loadData()
+  remove: function() {
+    socket.emit('core.unlistenlogs', {})
   },
 
   loadData: function() {
+    this.loglines = []
+    socket.emit('core.listenlogs', {})
     socket.emit('core.getlastlogs', {}, (res) => {
       this.loglines = res.map(this.formatLine)
       m.redraw()
@@ -51,6 +51,6 @@ const Log = {
       ]),
     ]
   }
-}
+})
 
 module.exports = Log

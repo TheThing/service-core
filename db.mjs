@@ -139,7 +139,18 @@ export default function GetDB(log) {
       db._.mixin(lodashId)
 
       db.defaults({
-          lastActiveVersion: null,
+          core: {
+            "appActive": null, // Current active running
+            "appLastActive": null, // Last active stable running
+            "appLatestInstalled": null, // Latest installed version
+            "appLatestVersion": null, // Newest version available
+            "manageActive": null,
+            "manageLastActive": null,
+            "manageLatestInstalled": null,
+            "manageLatestVersion": null
+          },
+          core_appHistory: [],
+          core_manageHistory: [],
           version: 1,
         })
         .write()

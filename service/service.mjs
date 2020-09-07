@@ -1,24 +1,30 @@
 import path from 'path'
 import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
+import { getPathFromRoot } from '../core/util.mjs'
 import nodewindows from 'node-windows'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-let config = JSON.parse(readFileSync(path.join(__dirname,'../config.json')))
+let config = JSON.parse(readFileSync(getPathFromRoot('./config.json')))
 
 const Service = nodewindows.Service
 
-// Create a new service object
-var svc = new Service({
+let serviceConfig = {
   name: config.serviceName,
   description: config.description,
-  script: path.join(__dirname,'../runner.mjs'),
+  script: getPathFromRoot('./runner.mjs'),
   env: {
     name: 'NODE_ENV',
     value: 'production',
   },
+  wait: 0,
+  grow: .5,
+  maxRestarts: 10
   //, workingDirectory: '...'
   //, allowServiceLogon: true
-});
+}
+
+console.log('Service', serviceConfig)
+
+// Create a new service object
+let svc = new Service(serviceConfig);
 
 export default svc

@@ -28,14 +28,17 @@ require(1)
 const m = require(3)
 const Header = require(26)
 
-const Frontpage = require(27)
-const Log = require(28)
+const Status = require(27)
+const Log = require(30)
+const Updater = require(31)
 
 m.mount(document.getElementById('header'), Header)
 
 m.route(document.getElementById('content'), '/', {
-    '/': Frontpage,
+    '/': Status,
     '/log': Log,
+    '/updater': Updater,
+    '/updater/:id': Updater,
 })
 
 },function (global, require, module, exports) {
@@ -2196,19 +2199,24 @@ const Header = {
     })
   },
   view: function() {
-    let path = m.route.get()
+    let path = m.route.get() || ''
 
     return [
       m('div.seperator'),
       m(m.route.Link, {
         href: '/',
-        class: path === '/' ? 'active' : '',
-      }, 'Frontpage'),
+        class: path === '/' || path === '' ? 'active' : '',
+      }, 'Status'),
       m('div.seperator'),
       m(m.route.Link, {
         href: '/log',
         class: path === '/log' ? 'active' : '',
       }, 'Log'),
+      m('div.seperator'),
+      m(m.route.Link, {
+        href: '/updater',
+        class: path.startsWith('/updater') ? 'active' : '',
+      }, 'Updater'),
       m('div.seperator'),
       !this.connected && m('div.disconnected', `
         Lost connection with server, Attempting to reconnect
@@ -2220,45 +2228,231 @@ const Header = {
 module.exports = Header
 
 },function (global, require, module, exports) {
-// frontpage\frontpage.js
+// status\status.js
 const m = require(3)
+const socket = require(1)
+const Module = require(28)
 
-const Frontpage = {
+const Status = Module({
+  init: function() {
+    this._name = '...loading...'
+    this._management = {
+      port: null,
+      repository: null,
+      active: null,
+      latestInstalled: null,
+      lastActive: null,
+      latestVersion: null,
+      running: null,
+    }
+    this._app = {
+      port: null,
+      repository: null,
+      active: null,
+      latestInstalled: null,
+      lastActive: null,
+      latestVersion: null,
+      running: null,
+    }
+
+    this._socketOn(() => this.loadData())
+  },
+
+  loadData: function() {
+    socket.emit('core.config', {}, (res) => {
+      this._name = res.name + ' - ' + res.serviceName
+      this._app.port = res.port
+      this._app.repository = res.appRepository
+      this._management.port = res.managePort
+      this._management.repository = res.manageRepository
+      m.redraw()
+    })
+    
+    this.on('core.db', (res) => {
+      this._management.active = res.manageActive
+      this._management.latestInstalled = res.manageLatestInstalled
+      this._management.lastActive = res.manageLastActive
+      this._management.latestVersion = res.manageLatestVersion
+      this._app.active = res.appActive
+      this._app.latestInstalled = res.appLatestInstalled
+      this._app.lastActive = res.appLastActive
+      this._app.latestVersion = res.appLatestVersion
+
+      m.redraw()
+    })
+
+    this.on('core.status', (res) => {
+      this._management.running = res.manage
+      this._app.running = res.app
+
+      m.redraw()
+    })
+
+    socket.emit('core.listencore', {})
+  },
+
+  remove: function() {
+    socket.emit('core.unlistencore', {})
+  },
+
+  restartClicked: function() {
+    socket.emit('core.restart', {})
+  },
+
   view: function() {
-    return [
-      m('h4.header', 'Frontpage'),
+    let loopOver = [
+      ['Management service', '_management'],
+      ['Application service', '_app'],
     ]
+    return m('div#status', [
+      m('h1.header', this._name),
+      m('div.split', [
+        loopOver.map((group) => {
+          return m('div.item', [
+            m('h4', group[0]),
+            m('p', this[group[1]].port
+              ? `Port: ${this[group[1]].port}`
+              : ''),
+            m('p', this[group[1]].repository
+              ? `${this[group[1]].repository}`
+              : '< no repository >'),
+            m('p', this[group[1]].active
+              ? `Running version: ${this[group[1]].active}`
+              : '< no running version >'),
+            m('p', this[group[1]].latestInstalled
+              ? `Latest installed: ${this[group[1]].latestInstalled}`
+              : '< no version installed >'),
+            m('p', this[group[1]].lastActive
+              ? `Last stable version: ${this[group[1]].lastActive}`
+              : '< no last stable version >'),
+            m('p', this[group[1]].latestVersion
+              ? `Latest version: ${this[group[1]].latestVersion}`
+              : '< no version found >'),
+            this[group[1]].running !== null
+              ? m('p',
+                  { class: group[1].running ? 'running' : 'notrunning' },
+                  group[1].running ? 'Running' : 'Not Running'
+                )
+              : null,
+            m('button', {
+              
+            }, 'Update/Start')
+          ])
+        }),
+      ]),
+      m('button', {
+        onclick: () => this.restartClicked(),
+      }, 'Restart service')
+    ])
   }
+})
+
+module.exports = Status
+
+},function (global, require, module, exports) {
+// module.js
+const defaults = require(29)
+const socket = require(1)
+
+module.exports = function Module(module) {
+  return defaults(module, {
+    init: function() {},
+
+    oninit: function(vnode) {
+      this._listeners = []
+      this.init(vnode)
+    },
+
+    _listeners: null,
+
+    _socketOn: function(cb) {
+      socket.on('connect', () => cb())
+
+      if (socket.connected) {
+        cb()
+      }
+    },
+
+    on: function(name, cb) {
+      this._listeners.push([name, cb])
+      socket.on(name, cb)
+    },
+
+    remove: function() {},
+
+    onremove: function() {
+      this.remove()
+      if (!this._listeners) return
+      for (let i = 0; i < this._listeners.length; i++) {
+        socket.removeListener(this._listeners[0], this._listeners[1])
+      }
+    },
+  })
 }
 
-module.exports = Frontpage
+},function (global, require, module, exports) {
+// defaults.js
+
+// taken from isobject npm library
+function isObject(val) {
+  return val != null && typeof val === 'object' && Array.isArray(val) === false
+}
+
+module.exports = function defaults(options, def) {
+  let out = { }
+
+  if (options) {
+    Object.keys(options || {}).forEach(key => {
+      out[key] = options[key]
+
+      if (Array.isArray(out[key])) {
+        out[key] = out[key].map(item => {
+          if (isObject(item)) return defaults(item)
+          return item
+        })
+      } else if (out[key] && typeof out[key] === 'object') {
+        out[key] = defaults(options[key], def && def[key])
+      }
+    })
+  }
+
+  if (def) {
+    Object.keys(def).forEach(function(key) {
+      if (typeof out[key] === 'undefined') {
+        out[key] = def[key]
+      }
+    })
+  }
+
+  return out
+}
 
 },function (global, require, module, exports) {
 // log\log.js
 const m = require(3)
 const socket = require(1)
+const Module = require(28)
 
-const Log = {
-  oninit: function() {
+const Log = Module({
+  init: function() {
     this.connected = socket.connected
     this.loglines = []
     
-    socket.on('newlog', data => {
+    this.on('newlog', data => {
       this.loglines.push(this.formatLine(data))
       m.redraw()
     })
 
-    socket.on('connect', () => {
-      this.loglines = []
-      this.loadData()
-      socket.emit('core.listenlogs', {})
-      m.redraw()
-    })
+    this._socketOn(() => this.loadData())
+  },
 
-    this.loadData()
+  remove: function() {
+    socket.emit('core.unlistenlogs', {})
   },
 
   loadData: function() {
+    this.loglines = []
+    socket.emit('core.listenlogs', {})
     socket.emit('core.getlastlogs', {}, (res) => {
       this.loglines = res.map(this.formatLine)
       m.redraw()
@@ -2288,8 +2482,172 @@ const Log = {
       ]),
     ]
   }
-}
+})
 
 module.exports = Log
+
+},function (global, require, module, exports) {
+// updater\updater.js
+const m = require(3)
+const socket = require(1)
+const Module = require(28)
+
+const Updater = Module({
+  init: function(vnode) {
+    this.activeApp = vnode.attrs.id || null
+    this.appRepository = null
+    this.manageRepository = null
+    this.db = null
+    this.app = {}
+    this.status = {}
+    this.logUpdated = false
+    this._socketOn(() => this.socketOpen())
+    this._active = null
+
+    if (this.activeApp && this.activeApp !== 'app'&& this.activeApp !== 'manage') {
+      return m.route('/updater')
+    }
+  },
+
+  onupdate: function(vnode) {
+    if (this.activeApp === vnode.attrs.id) return
+
+    this.activeApp = vnode.attrs.id || null
+    if (this.activeApp && this.activeApp !== 'app'&& this.activeApp !== 'manage') {
+      return m.route.set('/updater')
+    }
+    if (this.activeApp && (this.appRepository || this.manageRepository)) {
+      this.loadAppData()
+    }
+    m.redraw()
+  },
+
+  socketOpen: function() {
+    socket.emit('core.config', {}, (res) => {
+      this.appRepository = res.appRepository
+      this.manageRepository = res.manageRepository
+      if (this.activeApp) {
+        this.loadAppData()
+      }
+      m.redraw()
+    })
+
+    socket.on('core.status', (res) => {
+      this.status = res
+      m.redraw()
+    })
+
+    this.on('core.db', (res) => {
+      this.db = res
+      this.updateActiveDb()
+      m.redraw()
+    })
+
+    this.on('core.program.log', (res) => {
+      this.app.logs = res.logs
+      this.logUpdated = true
+      m.redraw()
+    })
+
+    socket.emit('core.listencore', {})
+  },
+
+  updateActiveDb() {
+    if (this.db && this.activeApp) {
+      this.app = {
+        repository: this[this.activeApp + 'Repository'],
+        active: this.db[this.activeApp + 'Active'],
+        lastActive: this.db[this.activeApp + 'LastActive'],
+        latestInstalled: this.db[this.activeApp + 'LatestInstalled'],
+        latestVersion: this.db[this.activeApp + 'LatestVersion'],
+        logs: '',
+      }
+    } else {
+      this.app = {}
+    }
+  },
+
+  loadAppData() {
+    this.updateActiveDb()
+    if (this.activeApp === 'app') {
+      socket.emit('core.listentoapp', {})
+    }
+    /* request to listen to app updates */
+  },
+
+  remove: function() {
+    socket.emit('core.unlistencore', {})
+    socket.emit('core.unlistentoapp', {})
+  },
+
+  startUpdate: function() {
+    socket.emit('core.update', {
+      name: this.activeApp,
+    })
+  },
+
+  view: function() {
+    return m('div#update', [
+      m('div.actions', [
+        m('h1.header', 'Updater'),
+        m('div.filler'),
+        m(m.route.Link, {
+          hidden: !this.appRepository,
+          class: 'button' + (this.activeApp === 'app' ? ' active' : ''),
+          href: '/updater/app',
+        }, 'Update App'),
+        m(m.route.Link, {
+          hidden: this.manageRepository,
+          class: 'button' + (this.activeApp === 'manage' ? ' active' : ''),
+          href: '/updater/manage',
+        }, 'Update Manager'),
+      ]),
+      this.activeApp && this.app ? [
+        m('h4', this.app.repository
+          ? `${this.app.repository}`
+          : '< no repository >'),
+        m('div.info', [
+          m('p', this.app.active
+            ? `Running version: ${this.app.active}`
+            : '< no running version >'),
+          m('p', this.app.latestInstalled
+            ? `Latest installed: ${this.app.latestInstalled}`
+            : '< no version installed >'),
+          m('p', this.app.lastActive
+            ? `Last stable version: ${this.app.lastActive}`
+            : '< no last stable version >'),
+          m('p', this.app.latestVersion
+            ? `Latest version: ${this.app.latestVersion}`
+            : '< no version found >'),
+        ]),
+        m('div.console', {
+            onupdate: (vnode) => {
+              if (this.logUpdated) {
+                vnode.dom.scrollTop = vnode.dom.scrollHeight
+                this.logUpdated = false
+              }
+            }
+          },
+          m('pre', this.app.logs && this.app.logs || '')
+        ),
+        this.db
+          ? m('div.actions', {
+              hidden: this.status[this.activeApp + 'Updating'],
+            }, [
+              m('button', {
+                onclick: () => this.startUpdate(),
+              }, 'Update & Install'),
+              m('button', {
+                hidden: !this.db[this.activeApp + 'LastActive']
+                    || this.db[this.activeApp + 'LastActive'] === this.db[this.activeApp + 'Active']
+              }, 'Use Last Version'),
+            ])
+          : null,
+      ] : null
+    ])
+  }
+})
+
+module.exports = Updater
 
 }]));

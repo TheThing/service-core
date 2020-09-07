@@ -4,7 +4,7 @@
   "description": "Core boiler plate code to install node server as windows service",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --watch example/api --watch runner.mjs --watch db.mjs --watch log.mjs runner.mjs | bunyan",
+    "dev": "nodemon --watch dev/api --watch core --watch runner.mjs --watch db.mjs --watch log.mjs runner.mjs | bunyan",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

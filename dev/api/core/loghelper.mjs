@@ -59,6 +59,10 @@ function stylize(str, color) {
   }
 }
 
+function indent(s) {
+    return '    ' + s.split(/\r?\n/).join('\n    ');
+}
+
 export function formatLog(data) {
   let rec = _.cloneDeep(data)
 
@@ -151,6 +155,9 @@ export function formatLog(data) {
       var stringified = false;
       if (typeof (value) !== 'string') {
           value = JSON.stringify(value, null, 2);
+          if (typeof (value) !== 'string') {
+              value = 'null'
+          }
           stringified = true;
       }
       if (value.indexOf('\n') !== -1 || value.length > 50) {

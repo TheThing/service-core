@@ -9,7 +9,7 @@ function register(ctx, name, method) {
   }
 
   ctx.socket.on(name, async function(data, cb) {
-    ctx.log.debug('Got event', name)
+    ctx.log.debug('SocketIO: ' + name)
 
     try {
       await method(ctx, data, cb)
@@ -21,7 +21,7 @@ function register(ctx, name, method) {
 }
 
 
-function onConnection(server, config, db, log, data) {
+function onConnection(server, config, db, log, coreService, data) {
   const io = server
   const socket = data
 
@@ -37,6 +37,7 @@ function onConnection(server, config, db, log, data) {
     socket,
     log: child,
     db,
+    core: coreService,
     logroot: log,
   }
 

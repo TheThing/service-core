@@ -3,11 +3,11 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import socket from 'socket.io-serveronly'
 import nStatic from 'node-static'
-import logmonitor from './core/logmonitor.mjs'
+import coremonitor from './core/coremonitor.mjs'
 
 import onConnection from './routerio.mjs'
 
-export function run(config, db, log, next) {
+export function run(config, db, log, core) {
   const __dirname = path.dirname(fileURLToPath(import.meta.url))
   const staticRoot = path.join(__dirname,'../public')
 
@@ -66,15 +66,17 @@ export function run(config, db, log, next) {
   })
 
   const io = new socket(server)
-  io.on('connection', onConnection.bind(this, io, config, db, log))
+  io.on('connection', onConnection.bind(this, io, config, db, log, core))
 
-  logmonitor(io, config, db, log)
+  coremonitor(io, config, db, log, core)
 
-  server.listen(config.port, '0.0.0.0', function(err) {
+  server.listen(config.managePort, '0.0.0.0', function(err) {
     if (err) {
       log.fatal(err)
+      log.event.error('Error starting server: ' + err.message)
       return process.exit(2)
     }
-    log.info(`Server is listening on ${config.port} serving files on ${staticRoot}`)
+    log.event.info(`Server is listening on ${config.managePort} serving files on ${staticRoot}`)
+    log.info(`Server is listening on ${config.managePort} serving files on ${staticRoot}`)
   })
 }
