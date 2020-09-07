@@ -109,3 +109,4 @@ package-lock.json
 
 app/*
 manage/*
+dev/public/main.js
