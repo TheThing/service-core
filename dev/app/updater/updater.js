@@ -59,6 +59,7 @@ const Updater = Module({
       m.redraw()
     })
 
+
     socket.emit('core.listencore', {})
   },
 
@@ -92,6 +93,12 @@ const Updater = Module({
 
   startUpdate: function() {
     socket.emit('core.update', {
+      name: this.activeApp,
+    })
+  },
+
+  startSoftware: function() {
+    socket.emit('core.start', {
       name: this.activeApp,
     })
   },
@@ -147,6 +154,10 @@ const Updater = Module({
               m('button', {
                 onclick: () => this.startUpdate(),
               }, 'Update & Install'),
+              m('button', {
+                hidden: this.status[this.activeApp] || !(this.db[this.activeApp + 'LastActive'] || this.db[this.activeApp + 'LatestInstalled']),
+                onclick: () => this.startSoftware(),
+              }, 'Start'),
               m('button', {
                 hidden: !this.db[this.activeApp + 'LastActive']
                     || this.db[this.activeApp + 'LastActive'] === this.db[this.activeApp + 'Active']

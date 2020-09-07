@@ -1,7 +1,7 @@
 import fs from 'fs'
 import { EventEmitter } from 'events'
 import { request } from './client.mjs'
-import { getPathFromRoot, runCommand } from './util.mjs'
+import { getPathFromRoot, getUrlFromRoot, runCommand } from './util.mjs'
 
 const fsp = fs.promises
 
@@ -16,10 +16,12 @@ export default class Core extends EventEmitter{
     this._manageRunning = false
     this._appUpdating = {
       status: false,
+      starting: false,
       logs: '',
     }
     this._manageUpdating = {
       status: false,
+      starting: false,
       logs: '',
     }
   }
@@ -39,7 +41,7 @@ export default class Core extends EventEmitter{
 
   async getLatestVersion(active, name) {
     // Example: 'https://api.github.com/repos/thething/sc-helloworld/releases'
-    this.logActive(name, active, `Fetching release info from: https://api.github.com/repos/${this._config[name + 'Repository']}/releases\n`)
+    this.logActive(name, active, `[Core] Fetching release info from: https://api.github.com/repos/${this._config[name + 'Repository']}/releases\n`)
 
 
     let result = await request(`https://api.github.com/repos/${this._config[name + 'Repository']}/releases`)
@@ -56,7 +58,7 @@ export default class Core extends EventEmitter{
         let item = items[x]
         for (let i = 0; i < item.assets.length; i++) {
           if (item.assets[i].name.endsWith('-sc.zip')) {
-            this.logActive(name, active, `Found version ${item.name} with file ${item.assets[i].name}\n`)
+            this.logActive(name, active, `[Core] Found version ${item.name} with file ${item.assets[i].name}\n`)
   
             await this._db.set(`core.${name}LatestVersion`, item.name)
                     .write()
@@ -105,48 +107,39 @@ export default class Core extends EventEmitter{
   }
 
   async installVersion(name, active, version) {
-    if (fs.existsSync(getPathFromRoot('./app/' + version.name))) {
-      await runCommand('rmdir', ['/S', '/Q', `"${getPathFromRoot('./app/' + version.name)}"`])
+    if (fs.existsSync(getPathFromRoot(`./${name}/` + version.name))) {
+      await runCommand('rmdir', ['/S', '/Q', `"${getPathFromRoot(`./${name}/` + version.name)}"`])
     }
     try {
-      await fsp.mkdir(getPathFromRoot('./app/' + version.name))
+      await fsp.mkdir(getPathFromRoot(`./${name}/` + version.name))
     } catch(err) {
       if (err.code !== 'EEXIST') {
         throw err
       }
     }
-    // await fsp.mkdir(getPathFromRoot('./app/' + version.name + '/node_modules'))
-    this.logActive(name, active, `Downloading ${version.name} (${version.url}) to ${version.name + '/' + version.name + '.zip'}\n`)
-    let filePath = getPathFromRoot('./app/' + version.name + '/' + version.name + '.zip')
+    // await fsp.mkdir(getPathFromRoot(`./${name}/` + version.name + '/node_modules'))
+    this.logActive(name, active, `[Core] Downloading ${version.name} (${version.url}) to ${version.name + '/' + version.name + '.zip'}\n`)
+    let filePath = getPathFromRoot(`./${name}/` + version.name + '/' + version.name + '.zip')
     await request(version.url, filePath)
-    this.logActive(name, active, `Downloading finished, starting extraction\n`)
+    this.logActive(name, active, `[Core] Downloading finished, starting extraction\n`)
     await runCommand(
       '"C:\\Program Files\\7-Zip\\7z.exe"',
       ['x', `"${filePath}"`],
-      getPathFromRoot('./app/' + version.name + '/'),
+      getPathFromRoot(`./${name}/` + version.name + '/'),
       this.logActive.bind(this, name, active)
     )
 
-    if (!fs.existsSync(getPathFromRoot('./app/' + version.name + '/index.mjs'))) {
-      this.logActive(name, active, `\nERROR: Missing index.mjs in the folder, exiting\n`)
-      throw new Error(`Missing index.mjs in ${getPathFromRoot('./app/' + version.name + '/index.mjs')}`)
+    if (!fs.existsSync(getPathFromRoot(`./${name}/` + version.name + '/index.mjs'))) {
+      this.logActive(name, active, `\n[Core] ERROR: Missing index.mjs in the folder, exiting\n`)
+      throw new Error(`Missing index.mjs in ${getPathFromRoot(`./${name}/` + version.name + '/index.mjs')}`)
     }
 
-    this.logActive(name, active, `\nStarting npm install\n`)
+    this.logActive(name, active, `\n[Core] Starting npm install\n`)
     
     await runCommand(
       'npm.cmd',
       ['install', '--production', '--no-optional', '--no-package-lock', '--no-audit'],
-      getPathFromRoot('./app/' + version.name + '/'),
-      this.logActive.bind(this, name, active)
-    )
-
-    this.logActive(name, active, `\nInstalled:\n`)
-
-    await runCommand(
-      'npm.cmd',
-      ['list'],
-      getPathFromRoot('./app/' + version.name + '/'),
+      getPathFromRoot(`./${name}/` + version.name + '/'),
       this.logActive.bind(this, name, active)
     )
     
@@ -154,10 +147,103 @@ export default class Core extends EventEmitter{
                   .write()
     this.emit('dbupdated', {})
     
-    this.logActive(name, active, `\nSuccessfully installed ${version.name}\n`)
+    this.logActive(name, active, `\n[Core] Successfully installed ${version.name}\n`)
+  }
+
+  getActive(name) {
+    if (name === 'app') {
+      return this._appUpdating
+    } else if (name === 'manage') {
+      return this._manageUpdating
+    } else {
+      throw new Error('Invalid name: ' + name)
+    }
   }
   
   async startProgram(name) {
+    let active = this.getActive(name)
+
+    if ((name === 'app' && this._appRunning)
+        || (name === 'manage' && this._manageRunning)
+        || active.starting) {
+      this._log.event.warn('Attempting to start ' + name + ' which is already running')
+      this._log.warn('Attempting to start ' + name + ' which is already running')
+      this.logActive(name, active, `[${name}] Attempting to start it but it is already running\n`, true)
+      return
+    }
+    active.starting = true
+
+    let core = this._db.get('core').value()
+    let version = core[name + 'LatestInstalled']
+    if (await this.tryStartProgram(name, active, version)) return
+    version = core[name + 'LastActive']
+    if (await this.tryStartProgram(name, active,version)) return
+
+    this._log.error('Unable to start ' + name)
+    this._log.event.error('Unable to start ' + name)
+
+    active.starting = false
+  }
+
+  async tryStartProgram(name, active, version) {
+    if (!version) return false
+    this.logActive(name, active, `[${name}] Attempting to start ${version}\n`)
+    let indexPath = getUrlFromRoot(`./${name}/` + version + '/index.mjs')
+    let module
+
+    try {
+      this.logActive(name, active, `[${name}] Loading ${indexPath}\n`)
+      module = await import(indexPath)
+    } catch (err) {
+      this.logActive(name, active, `[${name}] Error importing module\n`, true)
+      this.logActive(name, active, `[${name}] ${err.stack}\n`, true)
+      this._log.error(err, `Failed to load ${indexPath}`)
+      return false
+    }
+    let checkTimeout = null
+    try {
+      await new Promise((res, rej) => {
+        try {
+          let checkTimeout = setTimeout(function() {
+            rej(new Error('Program took longer than 60 seconds to resolve promise'))
+          }, 60 * 1000)
+
+          this.logActive(name, active, `[${name}] Starting module\n`)
+          let out = module.start(this._config, this._db, this._log, this)
+          if (out.then) {
+            return out.then(res, rej)
+          } else {
+            res()
+          }
+        } catch (err) {
+          rej(err)
+        }
+      })
+    } catch (err) {
+      clearTimeout(checkTimeout)
+      this.logActive(name, active, `[${name}] Error starting\n`, true)
+      this.logActive(name, active, `[${name}] ${err.stack}\n`, true)
+      this._log.error(err, `Failed to start ${name}`)
+      return false
+    }
+    clearTimeout(checkTimeout)
+    
+    this.logActive(name, active, `[${name}] Successfully started version ${version}\n`)
+    await this._db.set(`core.${name}Active`, version)
+                  .write()
+
+    let port = name === 'app' ? this._config.port : this._config.managePort
+    this.logActive(name, active, `[${name}] Checking if listening to port ${port}\n`)
+
+    if (name === 'app') {
+      this._appRunning = true
+    } else {
+      this._manageRunning = true
+    }
+
+    this.logActive(name, active, `[${name}] Module is running successfully\n`)
+    
+    return true
   }
 
   async updateProgram(name) {
@@ -172,35 +258,40 @@ export default class Core extends EventEmitter{
       return
     }
 
-    let active = null
-    if (name === 'app') {
-      active = this._appUpdating
-    } else {
-      active = this._manageUpdating
-    }
+    let active = this.getActive(name)
     active.status = true
     active.logs = ''
 
     this.emit('statusupdated', {})
-    this.logActive(name, active, 'Checking for updates...\n')
+    this.logActive(name, active, `[Core] Time: ${new Date().toISOString().replace('T', ' ').split('.')[0]}\n`)
+    this.logActive(name, active, '[Core] Checking for updates...\n')
 
     let version = null
+    let installed = false
+    let found = false
     try {
       version = await this.getLatestVersion(active, name)
       let core = this._db.get('core').value()
-      if (!core[name + 'Current'] || (core[name + 'Current'] !== version.name && core[name + 'CurrentVersion'] !== version)) {
+      let fromDb = this._db.get(`core_${name}History`).getById(version.name).value()
+      console.log(fromDb)
+      if (!fromDb || !fromDb.installed) {
         let oldVersion = core[name + 'Current'] || '<none>'
-        this.logActive(name, active, `Updating from ${oldVersion} to ${version.name}\n`)
+        this.logActive(name, active, `[Core] Updating from ${oldVersion} to ${version.name}\n`)
         await this.installVersion(name, active, version)
+        this.logActive(name, active, `[Core] Finished: ${new Date().toISOString().replace('T', ' ').split('.')[0]}\n`)
+        installed = new Date()
+      } else {
+        found = true
+        this.logActive(name, active, `[Core] Version ${version.name} already installed\n\n[Core] Logs from previous install:\n----------------------------------\n\n${fromDb.logs}\n----------------------------------\n[Core] Old logs finished`)
       }
     } catch(err) {
       this.logActive(name, active, '\n', true)
-      this.logActive(name, active, `Exception occured while updating ${name}\n`, true)
+      this.logActive(name, active, `[Error] Exception occured while updating ${name}\n`, true)
       this.logActive(name, active, err.stack, true)
       this._log.error(err, 'Error while updating ' + name)
     }
     active.status = false
-    if (version) {
+    if (version && !found) {
       await this._db.get(`core_${name}History`).upsert({
         id: version.name,
         name: version.name,
@@ -208,6 +299,8 @@ export default class Core extends EventEmitter{
         url: version.url,
         description: version.description,
         logs: active.logs,
+        stable: 0,
+        installed: installed,
       }).write()
     }
     this.emit('statusupdated', {})

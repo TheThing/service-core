@@ -62,6 +62,22 @@ export async function update(ctx, data, cb) {
 }
 
 /*
+ * Event: 'core.start'
+ *
+ * Start specific software
+ */
+export async function start(ctx, data, cb) {
+  if (data.name === 'app') {
+    await ctx.core.startProgram('app')
+  } else if (data.name === 'manage') {
+    await ctx.core.startProgram('manage')
+  } else {
+    ctx.log.warn('Invalid start command for app ' + data.name)
+    ctx.log.event.warn('Invalid start command for app ' + data.name)
+  }
+}
+
+/*
  * Event: 'core.listencore'
  *
  * Start listening to new log lines

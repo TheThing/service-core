@@ -151,7 +151,7 @@ export default function GetDB(log) {
           },
           core_appHistory: [],
           core_manageHistory: [],
-          version: 1,
+          core_version: 1,
         })
         .write()
         .then(
