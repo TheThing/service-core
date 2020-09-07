@@ -8,7 +8,6 @@ export function getPathFromRoot(add) {
 }
 
 export function runCommand(command, options = [], folder = null, stream = function() {}) {
-  console.log(command, options.join(' '))
   return new Promise(function(res, rej) {
     let processor = spawn(command, options, {
       shell: true,

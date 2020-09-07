@@ -77,9 +77,6 @@ export default class Core extends EventEmitter{
   }
 
   logActive(name, active, logline, doNotPrint = false) {
-    if (!logline.replace) {
-      console.log(logline)
-    }
     if (!doNotPrint) {
       this._log.info(`Log ${name}: ` + logline.replace(/\n/g, ''))
     }
