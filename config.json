@@ -4,8 +4,6 @@
   "description": "NodeJS Test Service",
   "port": 4270,
   "managePort": 4269,
-  "hasManage": true,
   "appRepository": "thething/sc-helloworld",
-  "manageRepository": null,
-  "useDev": true
+  "manageRepository": null
 }

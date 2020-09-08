@@ -1,7 +1,8 @@
 import { readFileSync } from 'fs'
-import getLog from './log.mjs'
-import lowdb from './db.mjs'
+import getLog from './core/log.mjs'
+import lowdb from './core/db.mjs'
 import Core from './core/core.mjs'
+import Util from './core/util.mjs'
 
 let config
 
@@ -32,8 +33,10 @@ const close = function(err) {
   })
 }
 
-lowdb(log).then(function(db) {
-  let core = new Core(config, db, log, close)
+const util = new Util(import.meta.url)
+
+lowdb(util, log).then(function(db) {
+  let core = new Core(util, config, db, log, close)
 
   if (config.useDev) {
     return import('./dev/index.mjs').then(function(module) {

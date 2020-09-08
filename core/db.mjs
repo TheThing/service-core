@@ -131,9 +131,9 @@ const lodashId = {
   }
 }
 
-const adapter = new FileAsync('db.json')
+export default function GetDB(util, log) {
+  const adapter = new FileAsync(util.getPathFromRoot('./db.json'))
 
-export default function GetDB(log) {
   return lowdb(adapter)
     .then(function(db) {
       db._.mixin(lodashId)

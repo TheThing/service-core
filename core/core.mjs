@@ -1,13 +1,13 @@
 import fs from 'fs'
 import { EventEmitter } from 'events'
 import { request } from './client.mjs'
-import { getPathFromRoot, getUrlFromRoot, runCommand } from './util.mjs'
 
 const fsp = fs.promises
 
 export default class Core extends EventEmitter{
-  constructor(config, db, log, closeCb) {
+  constructor(util, config, db, log, closeCb) {
     super()
+    this._util = util
     this._config = config
     this._db = db
     this._log = log
@@ -107,39 +107,39 @@ export default class Core extends EventEmitter{
   }
 
   async installVersion(name, active, version) {
-    if (fs.existsSync(getPathFromRoot(`./${name}/` + version.name))) {
-      await runCommand('rmdir', ['/S', '/Q', `"${getPathFromRoot(`./${name}/` + version.name)}"`])
+    if (fs.existsSync(this._util.getPathFromRoot(`./${name}/` + version.name))) {
+      await this._util.runCommand('rmdir', ['/S', '/Q', `"${this._util.getPathFromRoot(`./${name}/` + version.name)}"`])
     }
     try {
-      await fsp.mkdir(getPathFromRoot(`./${name}/` + version.name))
+      await fsp.mkdir(this._util.getPathFromRoot(`./${name}/` + version.name))
     } catch(err) {
       if (err.code !== 'EEXIST') {
         throw err
       }
     }
-    // await fsp.mkdir(getPathFromRoot(`./${name}/` + version.name + '/node_modules'))
+    // await fsp.mkdir(this._util.getPathFromRoot(`./${name}/` + version.name + '/node_modules'))
     this.logActive(name, active, `[Core] Downloading ${version.name} (${version.url}) to ${version.name + '/' + version.name + '.zip'}\n`)
-    let filePath = getPathFromRoot(`./${name}/` + version.name + '/' + version.name + '.zip')
+    let filePath = this._util.getPathFromRoot(`./${name}/` + version.name + '/' + version.name + '.zip')
     await request(version.url, filePath)
     this.logActive(name, active, `[Core] Downloading finished, starting extraction\n`)
-    await runCommand(
+    await this._util.runCommand(
       '"C:\\Program Files\\7-Zip\\7z.exe"',
       ['x', `"${filePath}"`],
-      getPathFromRoot(`./${name}/` + version.name + '/'),
+      this._util.getPathFromRoot(`./${name}/` + version.name + '/'),
       this.logActive.bind(this, name, active)
     )
 
-    if (!fs.existsSync(getPathFromRoot(`./${name}/` + version.name + '/index.mjs'))) {
+    if (!fs.existsSync(this._util.getPathFromRoot(`./${name}/` + version.name + '/index.mjs'))) {
       this.logActive(name, active, `\n[Core] ERROR: Missing index.mjs in the folder, exiting\n`)
-      throw new Error(`Missing index.mjs in ${getPathFromRoot(`./${name}/` + version.name + '/index.mjs')}`)
+      throw new Error(`Missing index.mjs in ${this._util.getPathFromRoot(`./${name}/` + version.name + '/index.mjs')}`)
     }
 
     this.logActive(name, active, `\n[Core] Starting npm install\n`)
     
-    await runCommand(
+    await this._util.runCommand(
       'npm.cmd',
       ['install', '--production', '--no-optional', '--no-package-lock', '--no-audit'],
-      getPathFromRoot(`./${name}/` + version.name + '/'),
+      this._util.getPathFromRoot(`./${name}/` + version.name + '/'),
       this.logActive.bind(this, name, active)
     )
     
@@ -188,7 +188,7 @@ export default class Core extends EventEmitter{
   async tryStartProgram(name, active, version) {
     if (!version) return false
     this.logActive(name, active, `[${name}] Attempting to start ${version}\n`)
-    let indexPath = getUrlFromRoot(`./${name}/` + version + '/index.mjs')
+    let indexPath = this._util.getUrlFromRoot(`./${name}/` + version + '/index.mjs')
     let module
 
     try {

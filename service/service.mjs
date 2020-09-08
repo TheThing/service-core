@@ -1,7 +1,11 @@
 import path from 'path'
 import { readFileSync } from 'fs'
-import { getPathFromRoot } from '../core/util.mjs'
 import nodewindows from 'node-windows'
+
+function getPathFromRoot(add) {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  return path.join(__dirname,'../', add)
+}
 
 let config = JSON.parse(readFileSync(getPathFromRoot('./config.json')))
 

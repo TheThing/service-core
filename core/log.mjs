@@ -1,6 +1,5 @@
 import nodewindows from 'node-windows'
 import bunyan from 'bunyan-lite'
-import lowdb from './db.mjs'
 
 export default function getLog(name) {
   let settings
