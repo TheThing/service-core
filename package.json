@@ -17,6 +17,12 @@
     "url": "https://github.com/TheThing/service-core/issues"
   },
   "homepage": "https://github.com/TheThing/service-core#readme",
+  "files": [
+    "lib.mjs",
+    "package.json",
+    "README.md",
+    "core"
+  ],
   "dependencies": {
     "bunyan-lite": "^1.0.1",
     "lodash": "^4.17.20",
