@@ -141,11 +141,9 @@ export default function GetDB(util, log) {
       db.defaults({
           core: {
             "appActive": null, // Current active running
-            "appLastActive": null, // Last active stable running
             "appLatestInstalled": null, // Latest installed version
             "appLatestVersion": null, // Newest version available
             "manageActive": null,
-            "manageLastActive": null,
             "manageLatestInstalled": null,
             "manageLatestVersion": null
           },

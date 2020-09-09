@@ -2,7 +2,7 @@
   "name": "service-core",
   "version": "1.0.0",
   "description": "Core boiler plate code to install node server as windows service",
-  "main": "lib.js",
+  "main": "lib.mjs",
   "scripts": {
     "dev": "nodemon --watch dev/api --watch core --watch runner.mjs --watch db.mjs --watch log.mjs runner.mjs | bunyan",
     "test": "echo \"Error: no test specified\" && exit 1"

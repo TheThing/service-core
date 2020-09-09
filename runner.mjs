@@ -35,13 +35,23 @@ const close = function(err) {
 
 const util = new Util(import.meta.url)
 
-lowdb(util, log).then(function(db) {
+lowdb(util, log).then(async function(db) {
   let core = new Core(util, config, db, log, close)
-
-  if (config.useDev) {
-    return import('./dev/index.mjs').then(function(module) {
-      return module.start(config, db, log, core)
-    })
+  let errors = 0
+  try {
+    await core.start('app')
+  } catch (err) {
+    log.error(err, 'Unable to start app')
+    errors++
+  }
+  try {
+    await core.start('manage')
+  } catch (err) {
+    log.error(err, 'Unable to start manage')
+    errors++
+  }
+  if (errors === 2 || (!core.appRunning && !core.manageRunning)) {
+    throw new Error('Neither manage or app were started, exiting.')
   }
 }, function(err) {
   log.fatal(err, 'Critical error opening database')

@@ -1,0 +1,66 @@
+import http from 'http'
+
+export default class HttpServer {
+  constructor() {
+    this.active = {
+      app: false,
+      manage: false,
+      dev: false,
+    }
+    this.sockets = {
+      app: new Set(),
+      manage: new Set(),
+      dev: new Set(),
+    }
+    this._context = 'dev'
+  }
+
+  setContext(name) {
+    if (name !== 'app' && name !== 'manage' && name !== 'dev') {
+      throw new Error('Cannot call setContext with values other than app or manage')
+    }
+  }
+
+  createServer(opts, listener) {
+    return this._createServer(this._context, opts, listener)
+  }
+
+  _createServer(name, opts, listener) {
+    let server = http.createServer(opts, listener)
+
+    server.on('connection', (socket) => {
+      this.sockets[name].add(socket)
+
+      socket.once('close', () => {
+        this.sockets[name].delete(socket)
+      })
+    })
+
+    this.active[name] = server
+    return server
+  }
+
+  getServer(name) {
+    return this.active[name]
+  }
+
+  closeServer(name) {
+    if (!this.active[name]) return
+
+    return new Promise((res, rej) => {
+      this.sockets[name].forEach(function(socket) {
+        socket.destroy()
+      })
+      this.sockets[name].clear()
+
+      this.active[name].close(function(err) {
+        if (err) return rej(err)
+        res()
+      })
+    })
+  }
+
+  getCurrentServer() {
+    return this.active[this._context]
+  }
+}

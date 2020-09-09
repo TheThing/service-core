@@ -1,7 +1,8 @@
 import Util from './core/util.mjs'
 import { readFileSync } from 'fs'
-import { getLog } from './core/log.mjs'
+import getLog from './core/log.mjs'
 import lowdb from './core/db.mjs'
+import Core from './core/core.mjs'
 
 export default class ServiceCore {
   constructor(name, root_import_meta_url) {
@@ -18,14 +19,14 @@ export default class ServiceCore {
 
   close(err) {
     if (err) {
-      log.fatal(err, 'App recorded a fatal error')
+      this.log.fatal(err, 'App recorded a fatal error')
       process.exit(4)
     }
-    log.warn('App asked to be restarted')
+    this.log.warn('App asked to be restarted')
     process.exit(0)
   }
 
-  async init() {
+  async init(module = null) {
     try {
       this.config = JSON.parse(readFileSync(this.util.getPathFromRoot('./config.json')))
     } catch (err) {
@@ -39,9 +40,13 @@ export default class ServiceCore {
     }
 
     this.core = new Core(this.util, this.config, this.db, this.log, (err) => this.close(err))
+
+    if (module) {
+      return this.startModule(module)
+    }
   }
 
-  async startModule(module) {
-    return module.start(config, db, log, core)
+  startModule(module) {
+    return this.core.startModule(module, this.config.devPort)
   }
 }
