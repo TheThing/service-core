@@ -192,8 +192,13 @@ export default class Core extends EventEmitter{
         .orderBy('installed', 'desc')
         .value()
 
+    this.logActive(name, active, `[${name}] Finding available version of ${name}\n`)
+
     for (let i = 0; i < history.length; i++) {
-      if (history[i].stable < 0) continue
+      if (history[i].stable < 0) {
+        this.logActive(name, active, `[${name}] Skipping version ${history[i].name} due to marked as unstable\n`)
+        continue
+      }
 
       await this.db.set(`core.${name}Active`, history[i].name)
                     .write()
@@ -214,6 +219,7 @@ export default class Core extends EventEmitter{
     }
 
     if (!this.db.get(`core.${name}Active`).value()) {
+      this.logActive(name, active, `[${name}] Could not find any available stable version of ${name}\n`)
       this.log.error('Unable to start ' + name)
       this.log.event.error('Unable to start ' + name)
     }
