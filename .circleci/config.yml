@@ -1,0 +1,33 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/node:latest
+    working_directory: ~/app
+    steps:
+      - checkout
+      - run:
+          name: Install npm deployment app
+          command: sudo npm install -g github-release-cli
+      - run:
+          name: Check if this is a new release
+          command: |
+            echo test
+      - run:
+          name: Get current git commit message
+          command: |
+            echo "export COMMIT_MESSAGE=\"$(git log --format=oneline -n 1 $CIRCLE_SHA1)\"" >> $BASH_ENV
+            source $BASH_ENV
+      - deploy:
+          name: Create a release
+          command: |
+            PACKAGE_VERSION=$(cat package.json | grep version | head -1 | awk -F: '{ print $2 }' | sed 's/[", ]//g')
+            echo "Packaging to ${CIRCLE_PROJECT_REPONAME}_build-sc.zip"
+            zip "${CIRCLE_PROJECT_REPONAME}_build-sc-core.zip" runner.mjs package.json service/* core/**/* core/*
+
+workflows:
+  version: 2
+  build_deploy:
+    jobs:
+      - build:
+          context: github-thething

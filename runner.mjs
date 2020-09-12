@@ -41,12 +41,14 @@ lowdb(util, log).then(async function(db) {
   try {
     await core.start('app')
   } catch (err) {
+    log.event.error('Unable to start app: ' + err.message)
     log.error(err, 'Unable to start app')
     errors++
   }
   try {
     await core.start('manage')
   } catch (err) {
+    log.event.error('Unable to start manage: ' + err.message)
     log.error(err, 'Unable to start manage')
     errors++
   }
