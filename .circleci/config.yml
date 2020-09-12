@@ -12,6 +12,7 @@ jobs:
       - run:
           name: Check if this is a new release
           command: |
+            set +e
             github-release list --owner $CIRCLE_PROJECT_USERNAME --repo $CIRCLE_PROJECT_REPONAME | grep "tag_name=\"v${PACKAGE_VERSION}\""
             retVal=$?
             if [ $retVal -eq 0 ]; then
