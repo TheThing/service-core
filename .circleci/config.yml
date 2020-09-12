@@ -12,7 +12,12 @@ jobs:
       - run:
           name: Check if this is a new release
           command: |
-            echo test
+            github-release list --owner $CIRCLE_PROJECT_USERNAME --repo $CIRCLE_PROJECT_REPONAME | grep "tag_name=\"v${PACKAGE_VERSION}\""
+            retVal=$?
+            if [ $retVal -eq 0 ]; then
+              echo "Release already exists. Quitting early"
+              circleci step halt
+            fi
       - run:
           name: Get current git commit message
           command: |
@@ -24,6 +29,16 @@ jobs:
             PACKAGE_VERSION=$(cat package.json | grep version | head -1 | awk -F: '{ print $2 }' | sed 's/[", ]//g')
             echo "Packaging to ${CIRCLE_PROJECT_REPONAME}_build-sc.zip"
             zip "${CIRCLE_PROJECT_REPONAME}_build-sc-core.zip" runner.mjs package.json service/* core/**/* core/*
+            echo "Creating release '${PACKAGE_VERSION}'"
+            github-release upload \
+              --commitish $CIRCLE_SHA1 \
+              --token $GITHUB_TOKEN \
+              --owner $CIRCLE_PROJECT_USERNAME \
+              --repo $CIRCLE_PROJECT_REPONAME \
+              --tag "v${PACKAGE_VERSION}" \
+              --name "v${PACKAGE_VERSION}" \
+              --body "Automatic CircleCI Build of v${PACKAGE_VERSION} from ${CIRCLE_SHA1}: ${COMMIT_MESSAGE}" \
+              "${CIRCLE_PROJECT_REPONAME}_build-sc-core.zip"
 
 workflows:
   version: 2
