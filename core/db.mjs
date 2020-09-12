@@ -137,6 +137,7 @@ export default function GetDB(util, log) {
   return lowdb(adapter)
     .then(function(db) {
       db._.mixin(lodashId)
+      db.adapterFilePath = util.getPathFromRoot('./db.json')
 
       db.defaults({
           core: {

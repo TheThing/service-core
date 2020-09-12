@@ -1,5 +1,6 @@
 import path from 'path'
 import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 import nodewindows from 'node-windows'
 
 function getPathFromRoot(add) {

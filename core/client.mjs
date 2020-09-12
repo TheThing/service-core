@@ -1,10 +1,14 @@
 import http from 'http'
 import https from 'https'
 import fs from 'fs'
-import { URL } from 'url'
+import url from 'url'
 
-export function request(path, filePath = null, redirects = 0) {
-  let parsed = new URL(path)
+export function request(path, filePath = null, redirects, returnText = false) {
+  let newRedirects = redirects + 1
+  if (!path || !path.startsWith('http')) {
+    return Promise.reject(new Error('URL was empty or missing http in front'))
+  }
+  let parsed = new url.URL(path)
 
   let h
   if (parsed.protocol === 'https:') {
@@ -25,6 +29,7 @@ export function request(path, filePath = null, redirects = 0) {
         'User-Agent': 'TheThing/service-core',
         Accept: 'application/vnd.github.v3+json'
       },
+      timeout: returnText ? 5000 : 60000,
       hostname: parsed.hostname
     }, function(res) {
       let output = ''
@@ -38,12 +43,19 @@ export function request(path, filePath = null, redirects = 0) {
       }
       res.on('end', function() {
         if (res.statusCode >= 300 && res.statusCode < 400) {
-          if (redirects > 5) {
+          if (newRedirects > 5) {
             return reject(new Error(`Too many redirects (last one was ${res.headers.location})`))
           }
-          return resolve(request(res.headers.location, filePath, redirects + 1))
+          if (!res.headers.location) {
+            return reject(new Error('Redirect returned no path in location header'))
+          }
+          if (res.headers.location.startsWith('http')) {
+            return resolve(request(res.headers.location, filePath, newRedirects, returnText))
+          } else {
+            return resolve(request(url.resolve(path, res.headers.location), filePath, newRedirects, returnText))
+          }
         } else if (res.statusCode >= 400) {
-          return reject(new Error(`HTTP Error ${statusCode}: ${output}`))
+          return reject(new Error(`HTTP Error ${res.statusCode}: ${output}`))
         }
         resolve({
           statusCode: res.statusCode,
@@ -54,10 +66,13 @@ export function request(path, filePath = null, redirects = 0) {
         })
       })
       req.on('error', reject)
+      req.on('timeout', function(err) {
+        reject(err)
+      })
     })
     req.end()
   }).then(function(res) {
-    if (!filePath) {
+    if (!filePath && !returnText) {
       try {
         res.body = JSON.parse(res.body)
       } catch(e) {

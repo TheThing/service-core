@@ -107,6 +107,7 @@ dist
 db.json
 package-lock.json
 
+daemon
 app/*
 manage/*
 dev/public/main.js

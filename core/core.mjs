@@ -8,20 +8,24 @@ const fsp = fs.promises
 export default class Core extends EventEmitter{
   constructor(util, config, db, log, closeCb) {
     super()
+    process.stdin.resume()
     this.http = new HttpServer()
     this.util = util
     this.config = config
     this.db = db
     this.log = log
     this._close = closeCb
+    this._activeCrashHandler = null
     this.appRunning = false
     this.manageRunning = false
     this._appUpdating = {
+      fresh: true,
       updating: false,
       starting: false,
       logs: '',
     }
     this._manageUpdating = {
+      fresh: true,
       updating: false,
       starting: false,
       logs: '',
@@ -114,6 +118,9 @@ export default class Core extends EventEmitter{
     if (fs.existsSync(this.util.getPathFromRoot(`./${name}/` + version.name))) {
       await this.util.runCommand('rmdir', ['/S', '/Q', `"${this.util.getPathFromRoot(`./${name}/` + version.name)}"`])
     }
+    if (!fs.existsSync(this.util.getPathFromRoot(`./${name}/`))) {
+      await fsp.mkdir(this.util.getPathFromRoot(`./${name}/`))
+    }
     try {
       await fsp.mkdir(this.util.getPathFromRoot(`./${name}/` + version.name))
     } catch(err) {
@@ -195,7 +202,8 @@ export default class Core extends EventEmitter{
     this.logActive(name, active, `[${name}] Finding available version of ${name}\n`)
 
     for (let i = 0; i < history.length; i++) {
-      if (history[i].stable < 0) {
+      if ((history[i].stable === -1 && !active.fresh)
+          || (history[i].stable < -1)) {
         this.logActive(name, active, `[${name}] Skipping version ${history[i].name} due to marked as unstable\n`)
         continue
       }
@@ -208,11 +216,16 @@ export default class Core extends EventEmitter{
       if (running) {
         history[i].stable = 1
       } else {
-        history[i].stable = -1
+        if (active.fresh || history[i].stable === -1) {
+          history[i].stable = -2
+        } else {
+          history[i].stable = -1
+        }
         await this.db.set(`core.${name}Active`, null)
                     .write()
         this.emit('dbupdated', {})
       }
+      active.fresh = false
 
       await this.db.get(`core_${name}History`).updateById(history[i].id, history[i].stable).write()
       if (history[i].stable > 0) break
@@ -225,6 +238,17 @@ export default class Core extends EventEmitter{
     }
 
     active.starting = false
+  }
+
+  programCrashed(name, version, active, oldStable) {
+    let newStable = -2
+    console.log('EXITING:', oldStable, active)
+    if (oldStable === 0 && !active.fresh) {
+      newStable = -1
+    }
+    let temp = this.db.get(`core_${name}History`).getById(version).set('stable', newStable )
+    temp.value() // Trigger update on __wrapped__
+    fs.writeFileSync(this.db.adapterFilePath, JSON.stringify(temp.__wrapped__, null, 2))
   }
 
   async tryStartProgramVersion(name, active, version) {
@@ -242,10 +266,15 @@ export default class Core extends EventEmitter{
       this.log.error(err, `Failed to load ${indexPath}`)
       return false
     }
+
     let checkTimeout = null
+    let oldStable = this.db.get(`core_${name}History`).getById(version).value().stable
+    this._activeCrashHandler = this.programCrashed.bind(this, name, version, active, oldStable)
+    process.once('exit', this._activeCrashHandler)
     try {
+      let port = name === 'app' ? this.config.port : this.config.managePort
       await new Promise((res, rej) => {
-        let checkTimeout = setTimeout(function() {
+        checkTimeout = setTimeout(function() {
           rej(new Error('Program took longer than 60 seconds to resolve promise'))
         }, 60 * 1000)
 
@@ -253,14 +282,20 @@ export default class Core extends EventEmitter{
 
         try {
           this.http.setContext(name)
-          this.startModule(module, name === 'app' ? this.config.port : this.config.managePort)
+          this.startModule(module, port)
               .then(res, rej)
         } catch (err) {
           rej(err)
         }
       })
+      clearTimeout(checkTimeout)
+
+      this.logActive(name, active, `[${name}] Testing out module port ${version}\n`)
+      await this.checkProgramRunning(name, active, port)
+      process.off('exit', this._activeCrashHandler)
     } catch (err) {
       clearTimeout(checkTimeout)
+      process.off('exit', this._activeCrashHandler)
       await this.http.closeServer(name)
 
       this.logActive(name, active, `[${name}] Error starting\n`, true)
@@ -268,14 +303,11 @@ export default class Core extends EventEmitter{
       this.log.error(err, `Failed to start ${name}`)
       return false
     }
-    clearTimeout(checkTimeout)
+    this._activeCrashHandler = null
     
     this.logActive(name, active, `[${name}] Successfully started version ${version}\n`)
     await this.db.set(`core.${name}Active`, version)
                   .write()
-
-    let port = name === 'app' ? this.config.port : this.config.managePort
-    this.logActive(name, active, `[${name}] Checking if listening to port ${port}\n`)
 
     if (name === 'app') {
       this.appRunning = true
@@ -287,6 +319,26 @@ export default class Core extends EventEmitter{
     this.logActive(name, active, `[${name}] Module is running successfully\n`)
     
     return true
+  }
+
+  async checkProgramRunning(name, active, port) {
+    let start = new Date()
+    let error = null
+    let success = false
+
+    while (new Date() - start < 10 * 1000) {
+      try {
+        let check = await request(`http://localhost:${port}`, null, 0, true)
+        success = true
+        break
+      } catch(err) {
+        this.logActive(name, active, `[${name}:${port}] ${err.message}, retrying in 3 seconds\n`)
+        error = err
+        await new Promise(function(res) { setTimeout(res, 3000)})
+      }
+    }
+    if (success) return true
+    throw error || new Error('Checking server failed')
   }
 
   async updateProgram(name) {
@@ -302,6 +354,11 @@ export default class Core extends EventEmitter{
     }
 
     let active = this.getActive(name)
+    let oldLogs = active.logs || ''
+    if (oldLogs) {
+      oldLogs += '\n'
+    }
+    active.logs = ''
     active.updating = true
 
     this.emit('statusupdated', {})
@@ -329,7 +386,7 @@ export default class Core extends EventEmitter{
       this.logActive(name, active, '\n', true)
       this.logActive(name, active, `[Error] Exception occured while updating ${name}\n`, true)
       this.logActive(name, active, err.stack, true)
-      this.log.error(err, 'Error while updating ' + name)
+      this.log.error('Error while updating ' + name, err)
     }
     active.updating = false
     if (version && !found) {
@@ -341,9 +398,11 @@ export default class Core extends EventEmitter{
         description: version.description,
         logs: active.logs,
         stable: 0,
-        installed: installed,
+        installed: installed && installed.toISOString(),
       }).write()
     }
+    active.logs = oldLogs + active.logs
+    this.emit(name + 'log', active)
     this.emit('statusupdated', {})
   }
 

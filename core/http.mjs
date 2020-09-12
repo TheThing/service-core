@@ -19,6 +19,7 @@ export default class HttpServer {
     if (name !== 'app' && name !== 'manage' && name !== 'dev') {
       throw new Error('Cannot call setContext with values other than app or manage')
     }
+    this._context = name
   }
 
   createServer(opts, listener) {
@@ -45,7 +46,7 @@ export default class HttpServer {
   }
 
   closeServer(name) {
-    if (!this.active[name]) return
+    if (!this.active[name]) return console.log('no active found with name', name, this.active)
 
     return new Promise((res, rej) => {
       this.sockets[name].forEach(function(socket) {
@@ -55,7 +56,9 @@ export default class HttpServer {
 
       this.active[name].close(function(err) {
         if (err) return rej(err)
-        res()
+
+        // Waiting 1 second for it to close down
+        setTimeout(res, 1000)
       })
     })
   }
