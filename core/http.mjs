@@ -49,7 +49,7 @@ export default class HttpServer {
     if (!this.active[name]) return false
 
     try {
-      await new Promise((res, rej) => {
+      return await new Promise((res, rej) => {
         this.sockets[name].forEach(function(socket) {
           socket.destroy()
         })
