@@ -39,7 +39,7 @@ export default class Core extends EventEmitter{
 
   startMonitor() {
     if (this.monitoring) return
-    this.log.info('[Scheduler] Automatic updater has been turned on. Will check for updates every 5 seconds')
+    this.log.info('[Scheduler] Automatic updater has been turned on. Will check for updates every 3 hours')
     let updating = false
 
     this.monitoring = setInterval(async () => {
