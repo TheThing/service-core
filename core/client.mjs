@@ -3,7 +3,10 @@ import https from 'https'
 import fs from 'fs'
 import url from 'url'
 
-export function request(path, filePath = null, redirects, returnText = false) {
+export function request(config, path, filePath = null, redirects, returnText = false) {
+  if (!config || typeof(config) === 'string') {
+    return Promise.reject(new Error('Request must be called with config in first parameter'))
+  }
   let newRedirects = redirects + 1
   if (!path || !path.startsWith('http')) {
     return Promise.reject(new Error('URL was empty or missing http in front'))
@@ -21,15 +24,19 @@ export function request(path, filePath = null, redirects, returnText = false) {
     if (!path) {
       return reject(new Error('Request path was empty'))
     }
+    let headers = {
+      'User-Agent': 'TheThing/service-core',
+      Accept: 'application/vnd.github.v3+json'
+    }
+    if (config.githubAuthToken && path.indexOf('api.github.com') >= 0) {
+      headers['Authorization'] = `token ${config.githubAuthToken}`
+    }
     let req = h.request({
       path: parsed.pathname + parsed.search,
       port: parsed.port,
       method: 'GET',
-      headers: {
-        'User-Agent': 'TheThing/service-core',
-        Accept: 'application/vnd.github.v3+json'
-      },
-      timeout: returnText ? 5000 : 60000,
+      headers: headers,
+      timeout: returnText ? 5000 : 10000,
       hostname: parsed.hostname
     }, function(res) {
       let output = ''
@@ -50,9 +57,9 @@ export function request(path, filePath = null, redirects, returnText = false) {
             return reject(new Error('Redirect returned no path in location header'))
           }
           if (res.headers.location.startsWith('http')) {
-            return resolve(request(res.headers.location, filePath, newRedirects, returnText))
+            return resolve(request(config, res.headers.location, filePath, newRedirects, returnText))
           } else {
-            return resolve(request(url.resolve(path, res.headers.location), filePath, newRedirects, returnText))
+            return resolve(request(config, url.resolve(path, res.headers.location), filePath, newRedirects, returnText))
           }
         } else if (res.statusCode >= 400) {
           return reject(new Error(`HTTP Error ${res.statusCode}: ${output}`))

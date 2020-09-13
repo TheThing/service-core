@@ -18,6 +18,7 @@ export default class Core extends EventEmitter{
     this._activeCrashHandler = null
     this.appRunning = false
     this.manageRunning = false
+    this.monitoring = false
     this._appUpdating = {
       fresh: true,
       updating: false,
@@ -30,6 +31,50 @@ export default class Core extends EventEmitter{
       starting: false,
       logs: '',
     }
+
+    this.db.set('core.manageActive', null)
+           .set('core.appActive', null)
+           .write().then()
+  }
+
+  startMonitor() {
+    if (this.monitoring) return
+    this.log.info('[Scheduler] Automatic updater has been turned on. Will check for updates every 5 seconds')
+    let updating = false
+
+    this.monitoring = setInterval(async () => {
+      if (updating) return
+      updating = true
+      this.log.info('[Scheduler] Starting automatic check for latest version of app and manage')
+
+      try {
+        await this.installLatestVersion('app')
+        await this.installLatestVersion('manage')
+      } catch(err) {
+        this.log.error(err, 'Error checking for latest versions')
+        this.log.event.error('Error checking for latest versions: ' + err.message)
+        updating = false
+        return
+      }
+
+      try {
+        if (this.hasNewVersionAvailable('app') || !this.appRunning) {
+          await this.tryStartProgram('app')
+        }
+      } catch(err) {
+        this.log.error(err, 'Unknown error occured attempting to app')
+        this.log.event.error('Unknown error starting app: ' + err.message)
+      }
+      try {
+        if (this.hasNewVersionAvailable('manage') || !this.manageRunning) {
+          await this.tryStartProgram('manage')
+        }
+      } catch(err) {
+        this.log.error(err, 'Unknown error occured attempting to start manage')
+        this.log.event.error('Unknown error starting manage: ' + err.message)
+      }
+      updating = false
+    }, 1000 * 60 * 60 * 3) // every 3 hours
   }
 
   restart() {
@@ -49,10 +94,9 @@ export default class Core extends EventEmitter{
 
   async getLatestVersion(active, name) {
     // Example: 'https://api.github.com/repos/thething/sc-helloworld/releases'
-    this.logActive(name, active, `[Core] Fetching release info from: https://api.github.com/repos/${this.config[name + 'Repository']}/releases\n`)
+    this.logActive(name, active, `Updater: Fetching release info from: https://api.github.com/repos/${this.config[name + 'Repository']}/releases\n`)
 
-
-    let result = await request(`https://api.github.com/repos/${this.config[name + 'Repository']}/releases`)
+    let result = await request(this.config, `https://api.github.com/repos/${this.config[name + 'Repository']}/releases`)
 
     let items = result.body.filter(function(item) {
       if (!item.assets.length) return false
@@ -66,7 +110,11 @@ export default class Core extends EventEmitter{
         let item = items[x]
         for (let i = 0; i < item.assets.length; i++) {
           if (item.assets[i].name.endsWith('-sc.zip')) {
-            this.logActive(name, active, `[Core] Found version ${item.name} with file ${item.assets[i].name}\n`)
+            if (this.db.get('core.' + name + 'LatestInstalled').value() === item.name) {
+              this.logActive(name, active, `Updater: Latest version already installed, exiting early\n`)
+              return null
+            }
+            this.logActive(name, active, `Updater: Found version ${item.name} with file ${item.assets[i].name}\n`)
   
             await this.db.set(`core.${name}LatestVersion`, item.name)
                     .write()
@@ -88,7 +136,7 @@ export default class Core extends EventEmitter{
 
   logActive(name, active, logline, doNotPrint = false) {
     if (!doNotPrint) {
-      this.log.info(`Log ${name}: ` + logline.replace(/\n/g, ''))
+      this.log.info(`[${name}] ` + logline.replace(/\n/g, ''))
     }
     active.logs += logline
     this.emit(name + 'log', active)
@@ -129,10 +177,10 @@ export default class Core extends EventEmitter{
       }
     }
     // await fsp.mkdir(this.util.getPathFromRoot(`./${name}/` + version.name + '/node_modules'))
-    this.logActive(name, active, `[Core] Downloading ${version.name} (${version.url}) to ${version.name + '/' + version.name + '.zip'}\n`)
+    this.logActive(name, active, `Installer: Downloading ${version.name} (${version.url}) to ${version.name + '/' + version.name + '.zip'}\n`)
     let filePath = this.util.getPathFromRoot(`./${name}/` + version.name + '/' + version.name + '.zip')
-    await request(version.url, filePath)
-    this.logActive(name, active, `[Core] Downloading finished, starting extraction\n`)
+    await request(this.config, version.url, filePath)
+    this.logActive(name, active, `Installer: Downloading finished, starting extraction\n`)
     await this.util.runCommand(
       '"C:\\Program Files\\7-Zip\\7z.exe"',
       ['x', `"${filePath}"`],
@@ -141,11 +189,11 @@ export default class Core extends EventEmitter{
     )
 
     if (!fs.existsSync(this.util.getPathFromRoot(`./${name}/` + version.name + '/index.mjs'))) {
-      this.logActive(name, active, `\n[Core] ERROR: Missing index.mjs in the folder, exiting\n`)
+      this.logActive(name, active, `\nInstaller: ERROR: Missing index.mjs in the folder, exiting\n`)
       throw new Error(`Missing index.mjs in ${this.util.getPathFromRoot(`./${name}/` + version.name + '/index.mjs')}`)
     }
 
-    this.logActive(name, active, `\n[Core] Starting npm install\n`)
+    this.logActive(name, active, `\nInstaller: Starting npm install\n`)
     
     await this.util.runCommand(
       'npm.cmd',
@@ -158,7 +206,7 @@ export default class Core extends EventEmitter{
                   .write()
     this.emit('dbupdated', {})
     
-    this.logActive(name, active, `\n[Core] Successfully installed ${version.name}\n`)
+    this.logActive(name, active, `\nInstaller: Successfully installed ${version.name}\n`)
   }
 
   getActive(name) {
@@ -180,31 +228,58 @@ export default class Core extends EventEmitter{
       this.log.warn('Module did not call http.createServer')
     }
   }
+
+  hasNewVersionAvailable(name) {
+    let newestVersion = this.db.get(`core.${name}LatestInstalled`).value()
+    if (!newestVersion) return false
+
+    let history = this.db.get(`core_${name}History`).getById(newestVersion).value()
+    if (history.installed && history.stable === 0) {
+      return true
+    }
+    return false
+  }
   
   async tryStartProgram(name) {
     let active = this.getActive(name)
 
-    if ((name === 'app' && this.appRunning)
-        || (name === 'manage' && this.manageRunning)
-        || active.starting) {
+    if (this[name + 'Running'] && !this.hasNewVersionAvailable(name)) {
       this.log.event.warn('Attempting to start ' + name + ' which is already running')
       this.log.warn('Attempting to start ' + name + ' which is already running')
-      this.logActive(name, active, `[${name}] Attempting to start it but it is already running\n`, true)
+      this.logActive(name, active, `Runner: Attempting to start it but it is already running\n`, true)
       return
     }
     active.starting = true
+
+    if (this[name + 'Running']) {
+      let success = await this.http.closeServer(name)
+      if (!success) {
+        if (process.env.NODE_ENV === 'production') {
+          this.logActive(name, active, `Runner: Found new version but server could not be shut down, restarting service core\n`)
+          await new Promise(() => {
+            this.log.event.warn('Found new version of ' + name + ' but server could not be shut down gracefully, restarting...', null, () => {
+              process.exit(100)
+            })
+          })
+        } else {
+          this.logActive(name, active, `Runner: Found new version but server could not be shut down\n`)
+          return
+        }
+      }
+      this[name + 'Running'] = false
+      this.emit('statusupdated', {})
+    }
 
     let history = this.db.get(`core_${name}History`)
         .filter('installed')
         .orderBy('installed', 'desc')
         .value()
-
-    this.logActive(name, active, `[${name}] Finding available version of ${name}\n`)
+    this.logActive(name, active, `Runner: Finding available version\n`)
 
     for (let i = 0; i < history.length; i++) {
       if ((history[i].stable === -1 && !active.fresh)
           || (history[i].stable < -1)) {
-        this.logActive(name, active, `[${name}] Skipping version ${history[i].name} due to marked as unstable\n`)
+        this.logActive(name, active, `Runner: Skipping version ${history[i].name} due to marked as unstable\n`)
         continue
       }
 
@@ -232,7 +307,7 @@ export default class Core extends EventEmitter{
     }
 
     if (!this.db.get(`core.${name}Active`).value()) {
-      this.logActive(name, active, `[${name}] Could not find any available stable version of ${name}\n`)
+      this.logActive(name, active, `Runner: Could not find any available stable version of ${name}\n`)
       this.log.error('Unable to start ' + name)
       this.log.event.error('Unable to start ' + name)
     }
@@ -253,16 +328,16 @@ export default class Core extends EventEmitter{
 
   async tryStartProgramVersion(name, active, version) {
     if (!version) return false
-    this.logActive(name, active, `[${name}] Attempting to start ${version}\n`)
+    this.logActive(name, active, `Runner: Attempting to start ${version}\n`)
     let indexPath = this.util.getUrlFromRoot(`./${name}/` + version + '/index.mjs')
     let module
 
     try {
-      this.logActive(name, active, `[${name}] Loading ${indexPath}\n`)
+      this.logActive(name, active, `Runner: Loading ${indexPath}\n`)
       module = await import(indexPath)
     } catch (err) {
-      this.logActive(name, active, `[${name}] Error importing module\n`, true)
-      this.logActive(name, active, `[${name}] ${err.stack}\n`, true)
+      this.logActive(name, active, `Runner: Error importing module\n`, true)
+      this.logActive(name, active, `${err.stack}\n`, true)
       this.log.error(err, `Failed to load ${indexPath}`)
       return false
     }
@@ -278,7 +353,7 @@ export default class Core extends EventEmitter{
           rej(new Error('Program took longer than 60 seconds to resolve promise'))
         }, 60 * 1000)
 
-        this.logActive(name, active, `[${name}] Starting module\n`)
+        this.logActive(name, active, `Runner: Starting module\n`)
 
         try {
           this.http.setContext(name)
@@ -290,7 +365,6 @@ export default class Core extends EventEmitter{
       })
       clearTimeout(checkTimeout)
 
-      this.logActive(name, active, `[${name}] Testing out module port ${version}\n`)
       await this.checkProgramRunning(name, active, port)
       process.off('exit', this._activeCrashHandler)
     } catch (err) {
@@ -298,14 +372,14 @@ export default class Core extends EventEmitter{
       process.off('exit', this._activeCrashHandler)
       await this.http.closeServer(name)
 
-      this.logActive(name, active, `[${name}] Error starting\n`, true)
-      this.logActive(name, active, `[${name}] ${err.stack}\n`, true)
+      this.logActive(name, active, `Runner: Error starting\n`, true)
+      this.logActive(name, active, `${err.stack}\n`, true)
       this.log.error(err, `Failed to start ${name}`)
       return false
     }
     this._activeCrashHandler = null
     
-    this.logActive(name, active, `[${name}] Successfully started version ${version}\n`)
+    this.logActive(name, active, `Runner: Successfully started version ${version}\n`)
     await this.db.set(`core.${name}Active`, version)
                   .write()
 
@@ -316,23 +390,24 @@ export default class Core extends EventEmitter{
     }
     this.emit('statusupdated', {})
 
-    this.logActive(name, active, `[${name}] Module is running successfully\n`)
+    this.logActive(name, active, `Runner: Module is running successfully\n`)
     
     return true
   }
 
   async checkProgramRunning(name, active, port) {
+    this.logActive(name, active, `Checker: Testing out module port ${port}\n`)
     let start = new Date()
     let error = null
     let success = false
 
     while (new Date() - start < 10 * 1000) {
       try {
-        let check = await request(`http://localhost:${port}`, null, 0, true)
+        let check = await request(this.config, `http://localhost:${port}`, null, 0, true)
         success = true
         break
       } catch(err) {
-        this.logActive(name, active, `[${name}:${port}] ${err.message}, retrying in 3 seconds\n`)
+        this.logActive(name, active, `Checker: ${err.message}, retrying in 3 seconds\n`)
         error = err
         await new Promise(function(res) { setTimeout(res, 3000)})
       }
@@ -341,14 +416,14 @@ export default class Core extends EventEmitter{
     throw error || new Error('Checking server failed')
   }
 
-  async updateProgram(name) {
+  async installLatestVersion(name) {
     if (!this.config[name + 'Repository']) {
       if (name === 'app') {
-        this.log.error(name + 'Repository was missing from config')
-        this.log.event.error(name + 'Repository was missing from config')
+        this.log.error(name + ' Repository was missing from config')
+        this.log.event.error(name + ' Repository was missing from config')
       } else {
-        this.log.warn(name + 'Repository was missing from config')
-        this.log.event.warn(name + 'Repository was missing from config')
+        this.log.warn(name + ' Repository was missing from config')
+        this.log.event.warn(name + ' Repository was missing from config')
       }
       return
     }
@@ -362,29 +437,30 @@ export default class Core extends EventEmitter{
     active.updating = true
 
     this.emit('statusupdated', {})
-    this.logActive(name, active, `[Core] Time: ${new Date().toISOString().replace('T', ' ').split('.')[0]}\n`)
-    this.logActive(name, active, '[Core] Checking for updates...\n')
+    this.logActive(name, active, `Installer: Checking for updates at time: ${new Date().toISOString().replace('T', ' ').split('.')[0]}\n`)
 
     let version = null
     let installed = false
     let found = false
     try {
       version = await this.getLatestVersion(active, name)
-      let core = this.db.get('core').value()
-      let fromDb = this.db.get(`core_${name}History`).getById(version.name).value()
-      if (!fromDb || !fromDb.installed) {
-        let oldVersion = core[name + 'Current'] || '<none>'
-        this.logActive(name, active, `[Core] Updating from ${oldVersion} to ${version.name}\n`)
-        await this.installVersion(name, active, version)
-        this.logActive(name, active, `[Core] Finished: ${new Date().toISOString().replace('T', ' ').split('.')[0]}\n`)
-        installed = new Date()
-      } else {
-        found = true
-        this.logActive(name, active, `[Core] Version ${version.name} already installed\n`)
+      if (version) {
+        let core = this.db.get('core').value()
+        let fromDb = this.db.get(`core_${name}History`).getById(version.name).value()
+        if (!fromDb || !fromDb.installed) {
+          let oldVersion = core[name + 'Current'] || '<none>'
+          this.logActive(name, active, `Installer: Updating from ${oldVersion} to ${version.name}\n`)
+          await this.installVersion(name, active, version)
+          this.logActive(name, active, `Installer: Finished: ${new Date().toISOString().replace('T', ' ').split('.')[0]}\n`)
+          installed = new Date()
+        } else {
+          found = true
+          this.logActive(name, active, `Installer: Version ${version.name} already installed\n`)
+        }
       }
     } catch(err) {
       this.logActive(name, active, '\n', true)
-      this.logActive(name, active, `[Error] Exception occured while updating ${name}\n`, true)
+      this.logActive(name, active, `Installer: Exception occured while updating ${name}\n`, true)
       this.logActive(name, active, err.stack, true)
       this.log.error('Error while updating ' + name, err)
     }
@@ -407,10 +483,17 @@ export default class Core extends EventEmitter{
   }
 
   async start(name) {
-    await this.updateProgram(name)
-    var version = this.db.get('core.' + name + 'LatestVersion').value()
+    var version = this.db.get('core.' + name + 'LatestInstalled').value()
     if (version) {
       await this.tryStartProgram(name)
+    }
+
+    await this.installLatestVersion(name)
+
+    if (version !== this.db.get('core.' + name + 'LatestInstalled').value()) {
+      if (!this[name + 'Running'] || this.hasNewVersionAvailable(name)) {
+        await this.tryStartProgram(name)
+      }
     }
   }
 }

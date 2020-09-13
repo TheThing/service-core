@@ -3,8 +3,8 @@ import bunyan from 'bunyan-lite'
 
 export default function getLog(name) {
   let settings
-  let ringbuffer = new bunyan.RingBuffer({ limit: 20 })
-  let ringbufferwarn = new bunyan.RingBuffer({ limit: 20 })
+  let ringbuffer = new bunyan.RingBuffer({ limit: 100 })
+  let ringbufferwarn = new bunyan.RingBuffer({ limit: 100 })
 
   if (process.env.NODE_ENV === 'production') {
     settings = {

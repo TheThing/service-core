@@ -1,5 +1,6 @@
 {
   "name": "service-core",
+  "githubAuthToken": null,
   "serviceName": "Service-Core Node",
   "description": "NodeJS Test Service",
   "port": 4270,

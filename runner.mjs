@@ -52,6 +52,7 @@ lowdb(util, log).then(async function(db) {
     log.error(err, 'Unable to start manage')
     errors++
   }
+  core.startMonitor()
   if (errors === 2 || (!core.appRunning && !core.manageRunning)) {
     throw new Error('Neither manage or app were started, exiting.')
   }

@@ -1,7 +1,7 @@
 import http from 'http'
 
 export default class HttpServer {
-  constructor() {
+  constructor(config) {
     this.active = {
       app: false,
       manage: false,
@@ -45,22 +45,26 @@ export default class HttpServer {
     return this.active[name]
   }
 
-  closeServer(name) {
-    if (!this.active[name]) return console.log('no active found with name', name, this.active)
+  async closeServer(name) {
+    if (!this.active[name]) return false
 
-    return new Promise((res, rej) => {
-      this.sockets[name].forEach(function(socket) {
-        socket.destroy()
+    try {
+      await new Promise((res, rej) => {
+        this.sockets[name].forEach(function(socket) {
+          socket.destroy()
+        })
+        this.sockets[name].clear()
+  
+        this.active[name].close(function(err) {
+          if (err) return rej(err)
+  
+          // Waiting 1 second for it to close down
+          setTimeout(function() { res(true) }, 1000)
+        })
       })
-      this.sockets[name].clear()
-
-      this.active[name].close(function(err) {
-        if (err) return rej(err)
-
-        // Waiting 1 second for it to close down
-        setTimeout(res, 1000)
-      })
-    })
+    } catch (err) {
+      throw new Error(`Error closing ${name}: ${err.message}`)
+    }
   }
 
   getCurrentServer() {
