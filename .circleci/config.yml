@@ -8,7 +8,7 @@ jobs:
       - checkout
       - run:
           name: Install npm deployment app
-          command: sudo npm install -g github-release-cli
+          command: sudo npm install -g github-release-cli @babel/runtime
       - run:
           name: Check if this is a new release
           command: |
@@ -30,6 +30,7 @@ jobs:
             PACKAGE_VERSION=$(cat package.json | grep version | head -1 | awk -F: '{ print $2 }' | sed 's/[", ]//g')
             echo "Packaging to ${CIRCLE_PROJECT_REPONAME}_build-sc.zip"
             zip "${CIRCLE_PROJECT_REPONAME}_build-sc-core.zip" runner.mjs package.json service/* core/**/* core/*
+            zip "${CIRCLE_PROJECT_REPONAME}_app.zip" runner.mjs package.json service/* core/**/* core/* service/* config.json install.bat npminstall.bat README.md start.bat stop.bat uninstall.bat
             echo "Creating release '${PACKAGE_VERSION}'"
             github-release upload \
               --commitish $CIRCLE_SHA1 \
@@ -37,9 +38,9 @@ jobs:
               --owner $CIRCLE_PROJECT_USERNAME \
               --repo $CIRCLE_PROJECT_REPONAME \
               --tag "v${PACKAGE_VERSION}" \
-              --name "v${PACKAGE_VERSION}" \
+              --release-name "v${PACKAGE_VERSION}" \
               --body "Automatic CircleCI Build of v${PACKAGE_VERSION} from ${CIRCLE_SHA1}: ${COMMIT_MESSAGE}" \
-              "${CIRCLE_PROJECT_REPONAME}_build-sc-core.zip"
+              "${CIRCLE_PROJECT_REPONAME}_build-sc-core.zip" "${CIRCLE_PROJECT_REPONAME}_app.zip"
 
 workflows:
   version: 2
